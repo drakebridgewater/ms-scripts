@@ -1,0 +1,52 @@
+$list_hostnames = @(
+	"host1","host2"
+)
+
+Write-Host "Enter admin password"
+$admin_pwd = Read-Host -AsSecureString
+
+$AllowedUserNames = 'student', 'dbridgew', 'admin', 'Administrator','svc_pam', 'NetworkService', 'LocalService', 'systemprofile'
+
+for($i = 0; $i -lt $list_hostnames.count; $i++) {
+	$error.clear()
+	$hostname = $list_hostnames[$i]
+
+	# check that the host is pingable
+	if (Test-Connection -ComputerName $hostname -Count 1 -Quiet ) {
+		# Store the credentials for icbuild
+		$cred = new-object -typename System.Management.Automation.PSCredential -argumentlist "admin", $admin_pwd
+		
+		# Create a session with the hostname as icbuild. This allows execution of multiple commands. 
+		try {
+			$s = new-pssession -computername $hostname -credential $cred
+		} catch {'* $hostname -- Something happened on session creations'}
+
+		if ( $error ){ continue}
+
+		$specific_allowed = $AllowedUserNames
+		$specific_allowed += "icbuild.$hostname"
+		try {
+		    Write-Host  "$hostname -- Scanning"
+			$out = Invoke-Command -Session $s -ScriptBlock { Get-CimInstance -Class Win32_UserProfile | 
+			 Where-Object { $_.LocalPath.split('\')[-1] -notin  $Using:specific_allowed } | foreach  { echo "Users to be deleted: " $_.LocalPath.split('\')[-1] }}
+			
+			if ( $out ) { echo $out }else {continue}
+
+			Write-Host  "Press any 's' to skip, any other key to continue, or CTRL+C to quit" 
+			$x = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+
+			if ( $x -eq 's' ) { continue }
+
+			Invoke-Command -Session $s -ScriptBlock { Get-CimInstance -Class Win32_UserProfile | 
+			 Where-Object { $_.LocalPath.split('\')[-1] -notin  $Using:specific_allowed } | Remove-CimInstance }
+		    Write-Host  "$hostname -- updated"
+		} catch {'*  $hostname -- Problem '}
+
+		
+
+	}else {
+
+	    Write-Host  "$hostname not available"
+	}
+}
+
