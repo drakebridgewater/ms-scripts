@@ -1,0 +1,47 @@
+# Description: Using an admin account set the password of a specific user an many hosts. 
+# Date: 2019.12.18
+# Author: Drake Bridgewater
+
+$list_hostnames = @(
+    "hostname1", "hostname2"
+)
+
+Write-Host "Enter icbuild password"
+$admin_pwd = Read-Host -AsSecureString
+# Write-Host "Enter Student password"
+# $student_pwd = Read-Host -AsSecureString
+
+$AllowedUserNames = 'dbridgew', 'icbuild', 'Administrator'
+
+for($i = 0; $i -lt $list_hostnames.count; $i++) {
+	$error.clear()
+	$hostname = $list_hostnames[$i]
+
+	# check that the host is pingable
+	if (Test-Connection -ComputerName $hostname -Count 1 -Quiet ) {
+		# Store the credentials for icbuild
+		$cred = new-object -typename System.Management.Automation.PSCredential -argumentlist "admin", $admin_pwd
+		
+		# Create a session with the hostname. This allows execution of multiple commands. 
+		try {
+			$s = new-pssession -computername $hostname -credential $cred
+		} catch {'* $hostname -- Something happened on session creations'}
+
+		# skip passowrd update if we encountered an error
+		if ( $error ){ continue}
+
+		# update the password of student
+		try {
+			# Write-Host "$hostname -- Setting password"
+			Invoke-Command -Session $s -ScriptBlock { $PlainPassword = "NEW PASSWORD" }
+			Invoke-Command -Session $s -ScriptBlock { $SecurePassword = $PlainPassword | ConvertTo-SecureString -AsPlainText -Force }
+			Invoke-Command -Session $s -ScriptBlock { $UserAccount = Get-LocalUser -Name "student" }
+			Invoke-Command -Session $s -ScriptBlock { $UserAccount | Set-LocalUser -Password $SecurePassword }
+		    Write-Host  "$hostname -- Password updated"
+		} catch {'*  $hostname -- Problem updating password'}
+
+	}else {
+
+	    Write-Host  "$hostname not available"
+	}
+}
